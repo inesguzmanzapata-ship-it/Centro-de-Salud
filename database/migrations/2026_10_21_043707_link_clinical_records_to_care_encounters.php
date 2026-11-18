@@ -13,20 +13,24 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('nursing_intakes', function (Blueprint $table): void {
+            $table->dropForeign(['appointment_id']);
             $table->dropUnique(['appointment_id']);
             $table->foreignId('care_encounter_id')->nullable()->after('id')->constrained()->restrictOnDelete();
             $table->foreignId('patient_profile_id')->nullable()->after('patient_id')->constrained()->restrictOnDelete();
             $table->foreignId('appointment_id')->nullable()->change();
+            $table->foreign('appointment_id')->references('id')->on('appointments')->nullOnDelete();
             $table->foreignId('patient_id')->nullable()->change();
             $table->index('appointment_id');
             $table->index(['patient_profile_id', 'created_at']);
         });
 
         Schema::table('medical_consultations', function (Blueprint $table): void {
+            $table->dropForeign(['appointment_id']);
             $table->dropUnique(['appointment_id']);
             $table->foreignId('care_encounter_id')->nullable()->after('id')->constrained()->restrictOnDelete();
             $table->foreignId('patient_profile_id')->nullable()->after('patient_id')->constrained()->restrictOnDelete();
             $table->foreignId('appointment_id')->nullable()->change();
+            $table->foreign('appointment_id')->references('id')->on('appointments')->nullOnDelete();
             $table->foreignId('patient_id')->nullable()->change();
             $table->index('appointment_id');
             $table->index(['patient_profile_id', 'created_at']);
