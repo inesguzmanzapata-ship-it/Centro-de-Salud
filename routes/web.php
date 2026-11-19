@@ -14,6 +14,7 @@ use App\Http\Controllers\PatientDirectoryController;
 use App\Http\Controllers\PatientHistoryController;
 use App\Http\Controllers\PatientProfileController;
 use App\Http\Controllers\ReceptionController;
+use App\Http\Controllers\NotificationController;
 use App\Models\PatientProfile;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
@@ -34,7 +35,18 @@ Route::middleware('guest')->group(function (): void {
 
 Route::middleware('auth')->group(function (): void {
     Route::post('/salir', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+    
+        // Notificaciones internas
+    Route::middleware('role:admin,doctor,staff,receptionist')->group(function (): void {
+        Route::get('/notificaciones', [NotificationController::class, 'index'])
+            ->name('notifications.index');
 
+        Route::patch('/notificaciones/{notification}/leer', [NotificationController::class, 'markAsRead'])
+            ->name('notifications.read');
+
+        Route::patch('/notificaciones/leer-todas', [NotificationController::class, 'markAllAsRead'])
+            ->name('notifications.read-all');
+    });
     Route::get('/inicio', function () {
         return view('dashboard', [
             'patientCount' => PatientProfile::query()->count(),
@@ -64,6 +76,10 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('role:patient')->group(function (): void {
         Route::get('/citas/disponibilidad', [AppointmentController::class, 'availability'])->name('appointments.availability');
         Route::get('/mis-citas', [AppointmentController::class, 'patientIndex'])->name('appointments.mine');
+        Route::get('/mis-citas/{appointment}/reprogramar', [AppointmentController::class, 'rescheduleForm'])
+              ->name('appointments.reschedule.form');
+        Route::patch('/mis-citas/{appointment}/reprogramar', [AppointmentController::class, 'reschedule'])
+    ->name('appointments.reschedule.update');
         Route::post('/citas', [AppointmentController::class, 'storeForPatient'])->name('appointments.store');
         Route::post('/citas/{appointment}/confirmar', [AppointmentController::class, 'confirm'])->name('appointments.confirm');
         Route::post('/citas/{appointment}/cancelar', [AppointmentController::class, 'cancel'])->name('appointments.cancel');

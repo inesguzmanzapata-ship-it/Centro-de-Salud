@@ -38,7 +38,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ $encounter ? route('medical-consultations.encounters.store', $encounter) : route('medical-consultations.store', $appointment) }}" class="mt-5 grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
+    <form method="POST" action="{{ $appointment ? route('medical-consultations.store', $appointment) : route('medical-consultations.encounters.store', $encounter) }}">
         @csrf
         <p class="text-sm text-slate-600">Registra la valoración profesional. No se generan diagnósticos ni recomendaciones automáticas.</p>
         <div>

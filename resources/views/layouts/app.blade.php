@@ -28,8 +28,39 @@
                     </span>
                 </a>
 
-                @auth
+                @auth 
+                @php
+    $unreadNotificationsCount = auth()->user()->hasRole('admin')
+        ? \Illuminate\Notifications\DatabaseNotification::whereNull('read_at')->count()
+        : auth()->user()->unreadNotifications()->count();
+@endphp
                     <div class="flex items-center gap-3 sm:gap-5">
+                     
+@if (auth()->user()->hasRole('admin', 'doctor', 'staff', 'receptionist'))
+    <a href="{{ route('notifications.index') }}"
+       class="relative grid size-10 shrink-0 place-items-center rounded-full border border-white/20 text-white transition hover:bg-white/10"
+       aria-label="Ver notificaciones">
+
+        <svg viewBox="0 0 24 24"
+             class="size-6"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8"
+             stroke-linecap="round"
+             stroke-linejoin="round"
+             aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+            <path d="M10 21h4"/>
+        </svg>
+
+        @if ($unreadNotificationsCount > 0)
+            <span class="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1 text-center text-xs font-bold text-white">
+                {{ $unreadNotificationsCount > 99 ? '99+' : $unreadNotificationsCount }}
+            </span>
+        @endif
+    </a>
+@endif
+   
                         <span class="hidden text-right sm:block">
                             <span class="block text-sm font-semibold">{{ auth()->user()->name }}</span>
                             <span class="block text-xs text-slate-300">{{ auth()->user()->role?->name ?? 'Usuario' }}</span>

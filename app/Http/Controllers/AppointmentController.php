@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Specialty;
 use App\Models\StaffProfile;
 use App\Models\User;
+use App\Notifications\AppointmentInternalNotification;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -77,13 +78,23 @@ class AppointmentController extends Controller
         return view('appointments.patient-index', compact('appointments'));
     }
 
-    public function storeForPatient(Request $request): RedirectResponse
-    {
-        $data = $request->validate($this->bookingRules());
-        $this->createAppointment($data, (int) $request->user()->id, 'pending');
+    
+public function storeForPatient(Request $request): RedirectResponse
+{
+    $data = $request->validate($this->bookingRules());
 
-        return redirect()->route('appointments.mine')->with('status', 'Tu cita quedó reservada y pendiente de confirmación.');
-    }
+    $appointment = $this->createAppointment(
+        $data,
+        (int) $request->user()->id,
+        'pending'
+    );
+
+    $this->notifyAppointmentStaff($appointment, 'created');
+
+    return redirect()->route('appointments.mine')
+        ->with('status', 'Tu cita quedó reservada y pendiente de confirmación.');
+}
+
 
     public function confirm(Request $request, Appointment $appointment): RedirectResponse
     {
@@ -119,45 +130,51 @@ class AppointmentController extends Controller
         return back()->with('status', 'La cita fue confirmada.');
     }
 
-    public function cancel(Request $request, Appointment $appointment): RedirectResponse
-    {
-        abort_unless((int) $appointment->patient_id === (int) $request->user()->id, 404);
+    
+public function cancel(Request $request, Appointment $appointment): RedirectResponse
+{
+    abort_unless((int) $appointment->patient_id === (int) $request->user()->id, 404);
 
-        if (! in_array($appointment->status, ['pending', 'confirmed'], true) || ! $this->appointmentIsFuture($appointment)) {
-            return back()->with('error', 'Solo puedes cancelar citas pendientes o confirmadas que aún no hayan iniciado.');
-        }
-
-        $updated = DB::transaction(function () use ($appointment, $request): int {
-            $lockedAppointment = Appointment::query()
-                ->whereKey($appointment->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if (
-                (int) $lockedAppointment->patient_id !== (int) $request->user()->id
-                || ! in_array($lockedAppointment->status, ['pending', 'confirmed'], true)
-            ) {
-                return 0;
-            }
-
-            $previousStatus = $lockedAppointment->status;
-            $lockedAppointment->update(['status' => 'cancelled']);
-            CareEncounterEvent::query()->create([
-                'appointment_id' => $lockedAppointment->id,
-                'author_user_id' => $request->user()->id,
-                'from_status' => $previousStatus,
-                'to_status' => 'cancelled',
-            ]);
-
-            return 1;
-        });
-
-        if ($updated !== 1) {
-            return back()->with('error', 'La cita ya no se puede cancelar.');
-        }
-
-        return back()->with('status', 'La cita fue cancelada; el horario vuelve a estar disponible.');
+    if (! in_array($appointment->status, ['pending', 'confirmed'], true) || ! $this->appointmentIsFuture($appointment)) {
+        return back()->with('error', 'Solo puedes cancelar citas pendientes o confirmadas que aún no hayan iniciado.');
     }
+
+    $updated = DB::transaction(function () use ($appointment, $request): int {
+        $lockedAppointment = Appointment::query()
+            ->whereKey($appointment->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if (
+            (int) $lockedAppointment->patient_id !== (int) $request->user()->id
+            || ! in_array($lockedAppointment->status, ['pending', 'confirmed'], true)
+        ) {
+            return 0;
+        }
+
+        $previousStatus = $lockedAppointment->status;
+        $lockedAppointment->update(['status' => 'cancelled']);
+
+        CareEncounterEvent::query()->create([
+            'appointment_id' => $lockedAppointment->id,
+            'author_user_id' => $request->user()->id,
+            'from_status' => $previousStatus,
+            'to_status' => 'cancelled',
+        ]);
+
+        return 1;
+    });
+
+    if ($updated !== 1) {
+        return back()->with('error', 'La cita ya no se puede cancelar.');
+    }
+
+    $appointment->refresh();
+    $this->notifyAppointmentStaff($appointment, 'cancelled');
+
+    return back()->with('status', 'La cita fue cancelada; el horario vuelve a estar disponible.');
+}
+
 
     public function adminCreate(Request $request): View
     {
@@ -196,26 +213,184 @@ class AppointmentController extends Controller
         ));
     }
 
-    public function storeForPatientByAdmin(Request $request): RedirectResponse
-    {
-        $data = $request->validate([
-            ...$this->bookingRules(),
-            'patient_id' => [
-                'required',
-                'integer',
-                Rule::exists('users', 'id')->where(fn ($query) => $query->whereIn(
-                    'role_id',
-                    Role::query()->where('code', 'patient')->select('id'),
-                )),
-            ],
-        ]);
-        $patient = User::query()->whereKey($data['patient_id'])
-            ->whereHas('role', fn ($query) => $query->where('code', 'patient'))
-            ->firstOrFail();
-        $this->createAppointment($data, (int) $patient->id, 'confirmed');
+    
+public function storeForPatientByAdmin(Request $request): RedirectResponse
+{
+    $data = $request->validate([
+        ...$this->bookingRules(),
+        'patient_id' => [
+            'required',
+            'integer',
+            Rule::exists('users', 'id')->where(fn ($query) => $query->whereIn(
+                'role_id',
+                Role::query()->where('code', 'patient')->select('id'),
+            )),
+        ],
+    ]);
 
-        return redirect()->route('admin.appointments.create')->with('status', 'La cita presencial fue registrada y confirmada.');
+    $patient = User::query()->whereKey($data['patient_id'])
+        ->whereHas('role', fn ($query) => $query->where('code', 'patient'))
+        ->firstOrFail();
+
+    $appointment = $this->createAppointment(
+        $data,
+        (int) $patient->id,
+        'confirmed'
+    );
+
+    $this->notifyAppointmentStaff($appointment, 'created');
+
+   return redirect()->to('/admin/citas/crear')
+    ->with('status', 'La cita presencial fue registrada y confirmada.');
+}
+
+    
+/**
+ * Mostrar los horarios disponibles para reprogramar una cita.
+ */
+public function rescheduleForm(Request $request, Appointment $appointment): View
+{
+    abort_unless(
+        (int) $appointment->patient_id === (int) $request->user()->id,
+        404
+    );
+
+    abort_unless(
+        in_array($appointment->status, ['pending', 'confirmed'], true)
+        && $this->appointmentIsFuture($appointment),
+        403
+    );
+
+    $data = $request->validate([
+        'date' => ['nullable', 'date', 'after_or_equal:today'],
+    ]);
+
+    $date = Carbon::parse(
+        $data['date'] ?? $appointment->appointment_date->toDateString()
+    );
+
+    $doctor = $appointment->doctor()
+        ->with(['user', 'specialties'])
+        ->firstOrFail();
+
+    $schedule = $doctor->schedules()
+        ->where('day_of_week', $date->dayOfWeekIso)
+        ->first();
+
+    $availableTimes = $schedule?->availableTimesFor(
+        $date,
+        (int) $appointment->id
+    ) ?? [];
+
+    // No ofrecer nuevamente el mismo horario de la cita actual.
+    if ($date->isSameDay($appointment->appointment_date)) {
+        $currentTime = substr((string) $appointment->start_time, 0, 5);
+
+        $availableTimes = array_values(array_filter(
+            $availableTimes,
+            fn (string $time): bool => $time !== $currentTime
+        ));
     }
+
+    return view('appointments.reschedule', compact(
+        'appointment',
+        'doctor',
+        'date',
+        'availableTimes'
+    ));
+}
+
+    
+/**
+ * Actualizar la fecha y hora de una cita.
+ */
+public function reschedule(Request $request, Appointment $appointment): RedirectResponse
+{
+    abort_unless(
+        (int) $appointment->patient_id === (int) $request->user()->id,
+        404
+    );
+
+    $data = $request->validate([
+        'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+        'start_time' => ['required', 'date_format:H:i'],
+    ]);
+
+    $updatedAppointment = DB::transaction(function () use (
+        $appointment,
+        $request,
+        $data
+    ): Appointment {
+        $lockedAppointment = Appointment::query()
+            ->whereKey($appointment->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $lockedAppointment->patient_id === (int) $request->user()->id,
+            404
+        );
+
+        if (
+            ! in_array($lockedAppointment->status, ['pending', 'confirmed'], true)
+            || ! $this->appointmentIsFuture($lockedAppointment)
+        ) {
+            throw ValidationException::withMessages([
+                'appointment' => 'Esta cita ya no puede reprogramarse.',
+            ]);
+        }
+
+        $date = Carbon::parse($data['appointment_date']);
+
+        $currentDate = $lockedAppointment->appointment_date->toDateString();
+        $currentTime = substr((string) $lockedAppointment->start_time, 0, 5);
+
+        if (
+            $currentDate === $date->toDateString()
+            && $currentTime === $data['start_time']
+        ) {
+            throw ValidationException::withMessages([
+                'start_time' => 'Selecciona una fecha u horario diferente.',
+            ]);
+        }
+
+        $schedule = DoctorSchedule::query()
+            ->where('staff_profile_id', $lockedAppointment->staff_profile_id)
+            ->where('day_of_week', $date->dayOfWeekIso)
+            ->lockForUpdate()
+            ->first();
+
+        if ($schedule === null) {
+            throw ValidationException::withMessages([
+                'appointment_date' => 'El médico no tiene horario disponible para esa fecha.',
+            ]);
+        }
+
+        $availableTimes = $schedule->availableTimesFor(
+            $date,
+            (int) $lockedAppointment->id
+        );
+
+        if (! in_array($data['start_time'], $availableTimes, true)) {
+            throw ValidationException::withMessages([
+                'start_time' => 'Ese horario ya no está disponible. Selecciona otro.',
+            ]);
+        }
+         $lockedAppointment->update([
+    'appointment_date' => $date->toDateString(),
+    'start_time' => $data['start_time'],
+    'reminder_sent_at' => null,
+          ]);
+       
+        return $lockedAppointment->fresh();
+    });
+
+    $this->notifyAppointmentStaff($updatedAppointment, 'updated');
+
+    return redirect()->route('appointments.mine')
+        ->with('status', 'Tu cita fue reprogramada correctamente.');
+}
+
 
     public function doctorAgenda(Request $request): View
     {
@@ -292,6 +467,40 @@ class AppointmentController extends Controller
             ]);
         });
     }
+
+
+/**
+ * Envía notificaciones internas al médico y al personal administrativo.
+ */
+private function notifyAppointmentStaff(Appointment $appointment, string $event): void
+{
+    $appointment->loadMissing('doctor.user');
+
+    // Administradores y personal de recepción.
+    $recipients = User::query()
+        ->whereHas('role', fn ($query) => $query->whereIn(
+            'code',
+            ['admin', 'staff', 'receptionist']
+        ))
+        ->get();
+
+    // Médico responsable de la cita.
+    $doctorUser = $appointment->doctor?->user;
+
+    if ($doctorUser !== null) {
+        $recipients->push($doctorUser);
+    }
+
+    // Enviar una notificación a cada destinatario.
+    $recipients->unique('id')->each(
+        function (User $recipient) use ($appointment, $event): void {
+            $recipient->notify(
+                new AppointmentInternalNotification($appointment, $event)
+            );
+        }
+    );
+}
+
 
     private function appointmentIsFuture(Appointment $appointment): bool
     {
