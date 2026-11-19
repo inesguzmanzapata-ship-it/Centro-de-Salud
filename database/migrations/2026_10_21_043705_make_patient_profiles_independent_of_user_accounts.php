@@ -13,7 +13,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('patient_profiles', function (Blueprint $table): void {
-            $table->dropForeign(['user_id']);
+            $table->dropForeign(['user_id']);   
             $table->dropUnique(['user_id']);
             $table->string('name')->nullable()->after('user_id');
             $table->foreignId('user_id')->nullable()->change();

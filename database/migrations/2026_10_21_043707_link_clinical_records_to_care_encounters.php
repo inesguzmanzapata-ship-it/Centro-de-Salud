@@ -30,6 +30,7 @@ return new class extends Migration
                 ->restrictOnDelete();
 
             $table->foreignId('appointment_id')->nullable()->change();
+            $table->foreign('appointment_id')->references('id')->on('appointments')->nullOnDelete();
             $table->foreignId('patient_id')->nullable()->change();
 
             $table->foreign('appointment_id')
@@ -57,6 +58,7 @@ return new class extends Migration
                 ->restrictOnDelete();
 
             $table->foreignId('appointment_id')->nullable()->change();
+            $table->foreign('appointment_id')->references('id')->on('appointments')->nullOnDelete();
             $table->foreignId('patient_id')->nullable()->change();
 
             $table->foreign('appointment_id')
