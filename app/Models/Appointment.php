@@ -8,7 +8,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
-#[Fillable(['staff_profile_id', 'patient_id', 'appointment_date', 'start_time', 'status', 'reason'])]
+#[Fillable([
+    'staff_profile_id',
+    'patient_id',
+    'appointment_date',
+    'start_time',
+    'status',
+    'reason',
+    'reminder_sent_at'
+])]
 class Appointment extends Model
 {
     protected $attributes = [

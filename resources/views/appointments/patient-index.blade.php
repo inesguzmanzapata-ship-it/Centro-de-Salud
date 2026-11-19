@@ -43,6 +43,12 @@
                             <button type="submit" class="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Cancelar</button>
                         </form>
                     @endif
+                    @if ($appointment->can_cancel)
+    <a href="{{ route('appointments.reschedule.form', $appointment) }}"
+      class="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">
+        Reprogramar
+    </a>
+@endif
                 </div>
             @endif
         </article>

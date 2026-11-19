@@ -120,7 +120,7 @@ class UserController extends Controller
     private function rules(Request $request, ?User $user = null): array
     {
         $isPatient = (string) $request->input('role_id') === (string) Role::query()->where('code', 'patient')->value('id');
-        $availableRoleCodes = ['admin', 'patient'];
+        $availableRoleCodes = ['admin', 'patient','receptionist'];
 
         if ($user?->hasRole('doctor')) {
             $availableRoleCodes[] = 'doctor';
@@ -147,15 +147,18 @@ class UserController extends Controller
      * @return Collection<int, Role>
      */
     private function rolesFor(?User $user = null): Collection
-    {
-        $codes = ['admin', 'patient'];
+{
+    $codes = ['admin', 'patient', 'receptionist'];
 
-        if ($user?->hasRole('doctor')) {
-            $codes[] = 'doctor';
-        }
-
-        return Role::query()->whereIn('code', $codes)->orderBy('name')->get();
+    if ($user?->hasRole('doctor')) {
+        $codes[] = 'doctor';
     }
+
+    return Role::query()
+        ->whereIn('code', $codes)
+        ->orderBy('name')
+        ->get();
+}
 
     /**
      * @param  array<string, mixed>  $data
