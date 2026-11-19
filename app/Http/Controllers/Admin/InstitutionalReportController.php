@@ -51,12 +51,18 @@ class InstitutionalReportController extends Controller
         return response()->streamDownload(function () use ($rows): void {
             $stream = fopen('php://output', 'w');
 
-            foreach ($rows as $row) {
-                fputcsv($stream, $row, ',', '"', '\\');
+            //Permite que Excel reconozca las tildes y la ñ
+             fwrite($stream, "\xEF\xBB\xBF");
+
+            //Indica a Excel que las columnas estan separadas por un punto y coma.
+             fwrite($stream, "sep=;\r\n");
+    
+             foreach ($rows as $row) {
+                 fputcsv($stream, $row, ';', '"', '');
             }
 
-            fclose($stream);
-        }, 'reporte-institucional-'.$month.'.csv', [
+             fclose($stream);
+            }, 'reporte-institucional-'.$month.'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }

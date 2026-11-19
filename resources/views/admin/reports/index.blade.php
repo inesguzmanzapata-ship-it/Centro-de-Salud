@@ -82,5 +82,39 @@
             </table>
         </div>
     </div>
+     <div class="mt-6 grid gap-4 lg:grid-cols-2">
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 class="font-semibold text-slate-900">Citas por estado</h2>
+            <canvas id="chartEstados" class="mt-4"></canvas>
+        </article>
+        <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 class="font-semibold text-slate-900">Citas por médico</h2>
+            <canvas id="chartMedicos" class="mt-4"></canvas>
+        </article>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>
+        new Chart(document.getElementById('chartEstados'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Pendientes', 'Confirmadas', 'Completadas', 'Canceladas'],
+                datasets: [{
+                    data: @json(array_values($report['appointment_counts'])),
+                    backgroundColor: ['#f59e0b', '#0d9488', '#16a34a', '#dc2626'],
+                }],
+            },
+        });
+        new Chart(document.getElementById('chartMedicos'), {
+            type: 'bar',
+            data: {
+                labels: @json($report['doctors']->map(fn ($d) => $d->user->name ?? 'Sin nombre')->values()),
+                datasets: [
+                    { label: 'Asignadas', data: @json($report['doctors']->pluck('appointments_count')->values()), backgroundColor: '#0d9488' },
+                    { label: 'Completadas', data: @json($report['doctors']->pluck('completed_appointments_count')->values()), backgroundColor: '#16a34a' },
+                ],
+            },
+        });
+    </script>
 </section>
 @endsection
